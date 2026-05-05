@@ -5,6 +5,9 @@ import { writeRows } from './gsheet';
 
 const app = new Hono<{ Bindings: Env }>();
 
+/** Home page - redirect to the spreadsheet */
+app.get('/', ({ env, redirect }) => redirect(`https://docs.google.com/spreadsheets/d/${env.GSHEET_SPREADSHEET_ID}/`));
+
 /**
  * GET /subscribe
  * The main entrypoint to enable subscriptions. This is also the OAuth callback URL:
