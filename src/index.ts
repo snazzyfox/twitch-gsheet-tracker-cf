@@ -1,41 +1,50 @@
+import { Hono } from 'hono';
+import { authenticate, getDataRowFromMessage, resyncSubscriptions, signInUrl, verifySignature } from './twitch';
+import { DataRow } from './types';
+import { writeRows } from './gsheet';
+
+const app = new Hono<{ Bindings: Env }>();
+
 /**
- * Welcome to Cloudflare Workers!
- *
- * This is a template for a Queue consumer: a Worker that can consume from a
- * Queue: https://developers.cloudflare.com/queues/get-started/
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
+ * GET /subscribe
+ * The main entrypoint to enable subscriptions. This is also the OAuth callback URL:
+ *   If user is not logged in, redirect to twitch login.
+ *   If user is logged in, their auth code is used to mint a token, which is then used to create subscriptions.
  */
+app.get('/subscribe', async ({ req, redirect, text }) => {
+	const code = req.query('code');
+	const redirectUri = req.url.replace(/(\?|#).*$/, '');
+	if (!code) return redirect(signInUrl(redirectUri));
+
+	await authenticate(code, redirectUri);
+
+	// Get the url for the /webhook endpoint
+	const webhookUrl = new URL(req.url).origin + '/webhook';
+	await resyncSubscriptions(webhookUrl);
+	return text('OK');
+});
+
+/** GET /webhook
+ * The webhook endpoint. This receives twitch webhook messages and queues them for processing.
+ */
+app.post('/webhook', async ({ req, env, text }) => {
+	if (!(await verifySignature(req))) return text('Bad signature', { status: 403 });
+	switch (req.header('Twitch-Eventsub-Message-Type')) {
+		case 'webhook_callback_verification':
+			return text((await req.json()).challenge);
+		case 'notification':
+			const dataRow = getDataRowFromMessage(await req.json());
+			if (dataRow) await env.QUEUE.send(dataRow);
+			return text('OK');
+	}
+	return text('Unrecognized message type', { status: 400 });
+});
+
+const queue: ExportedHandlerQueueHandler<Env, DataRow> = async function (batch) {
+	await writeRows(batch.messages);
+};
 
 export default {
-	// Our fetch handler is invoked on a HTTP request: we can send a message to a queue
-	// during (or after) a request.
-	// https://developers.cloudflare.com/queues/platform/javascript-apis/#producer
-	async fetch(req, env, ctx): Promise<Response> {
-		// To send a message on a queue, we need to create the queue first
-		// https://developers.cloudflare.com/queues/get-started/#3-create-a-queue
-		await env.MY_QUEUE.send({
-			url: req.url,
-			method: req.method,
-			headers: Object.fromEntries(req.headers),
-		});
-		return new Response('Sent message to the queue');
-	},
-	// The queue handler is invoked when a batch of messages is ready to be delivered
-	// https://developers.cloudflare.com/queues/platform/javascript-apis/#messagebatch
-	async queue(batch, env): Promise<void> {
-		// A queue consumer can make requests to other endpoints on the Internet,
-		// write to R2 object storage, query a D1 Database, and much more.
-		for (let message of batch.messages) {
-			// Process each message (we'll just log these)
-			console.log(`message ${message.id} processed: ${JSON.stringify(message.body)}`);
-		}
-	},
-} satisfies ExportedHandler<Env, Error>;
+	fetch: app.fetch,
+	queue,
+} satisfies ExportedHandler<Env, DataRow>;
