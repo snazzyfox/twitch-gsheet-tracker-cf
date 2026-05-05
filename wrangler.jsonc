@@ -20,7 +20,9 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	"vars": {
-		"BROADCASTER_ID": "55899594"
-	}
+  "observability": {
+    "logs": {
+      "enabled": true,
+    }
+  }
 }
