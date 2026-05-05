@@ -6,7 +6,10 @@
 	"queues": {
 		"consumers": [
 			{
-				"queue": "twitch-sub-tracker"
+				"queue": "twitch-sub-tracker",
+        "max_concurrency": 1,
+        "max_batch_size": 50,
+        "max_batch_timeout": 10,
 			}
 		],
 		"producers": [
