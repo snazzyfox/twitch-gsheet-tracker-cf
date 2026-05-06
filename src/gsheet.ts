@@ -19,6 +19,7 @@ const sheets = google.sheets({
 });
 
 export async function writeRows(data: readonly Message<DataRow>[]) {
+  console.trace("Writing rows", data);
   try {
 		const values = data.map(rec => [
 			rec.timestamp.toISOString(),

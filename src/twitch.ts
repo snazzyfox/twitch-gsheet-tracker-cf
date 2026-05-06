@@ -5,7 +5,7 @@ import { HonoRequest } from 'hono';
 import crypto from 'crypto';
 import { DataRow } from './types';
 
-const scope = 'user:read:chat bits:read channel:read:hype_train';
+const scope = 'user:bot channel:bot user:read:chat bits:read channel:read:hype_train';
 const authProvider = new AppTokenAuthProvider(env.TWITCH_CLIENT_ID, env.TWITCH_CLIENT_SECRET);
 const apiClient = new ApiClient({ authProvider });
 
@@ -26,7 +26,7 @@ export async function authenticate(code: string, redirectUri: string) {
   // This only serves to authenticate the user so that the app has access to their data
 }
 
-export async function resyncSubscriptions(prefix: string) {
+export async function resyncSubscriptions(callback: string) {
   // First get all existing subscriptions and remove them in order to avoid duplicates
   const existingSubs = await apiClient.eventSub.getSubscriptions();
   for (const sub of existingSubs.data) {
@@ -36,12 +36,15 @@ export async function resyncSubscriptions(prefix: string) {
   const webhookTransport = {
     method: 'webhook',
     secret: env.WEBHOOK_SECRET,
-    callback: prefix + '/webhook',
+    callback,
   } satisfies HelixEventSubTransportOptions;
 
   // Then add all subscriptions we want
+  console.trace("Subscribing to Chat Notifications");
   await apiClient.eventSub.subscribeToChannelChatNotificationEvents(env.BROADCASTER_ID, webhookTransport);
+  console.trace("Subscribing to Bits Use");
   await apiClient.eventSub.subscribeToChannelBitsUseEvents(env.BROADCASTER_ID, webhookTransport);
+  console.trace("Subscribing to Hype Train End");
   await apiClient.eventSub.subscribeToChannelHypeTrainEndV2Events(env.BROADCASTER_ID, webhookTransport);
 }
 
@@ -57,6 +60,7 @@ export async function verifySignature(req: HonoRequest) {
 }
 
 export function getDataRowFromMessage(message: any): DataRow | undefined {
+  console.trace('Received message', message);
   switch (message.subscription.type) {
     case 'channel.chat.notification':
       switch (message.event.notice_type) {
