@@ -40,11 +40,11 @@ export async function resyncSubscriptions(callback: string) {
   } satisfies HelixEventSubTransportOptions;
 
   // Then add all subscriptions we want
-  console.trace("Subscribing to Chat Notifications");
+  console.trace('Subscribing to Chat Notifications');
   await apiClient.eventSub.subscribeToChannelChatNotificationEvents(env.BROADCASTER_ID, webhookTransport);
-  console.trace("Subscribing to Bits Use");
+  console.trace('Subscribing to Bits Use');
   await apiClient.eventSub.subscribeToChannelBitsUseEvents(env.BROADCASTER_ID, webhookTransport);
-  console.trace("Subscribing to Hype Train End");
+  console.trace('Subscribing to Hype Train End');
   await apiClient.eventSub.subscribeToChannelHypeTrainEndV2Events(env.BROADCASTER_ID, webhookTransport);
 }
 
@@ -55,29 +55,49 @@ export async function verifySignature(req: HonoRequest) {
   const rawBody = await req.text();
   const message = messageId + messageTimestamp + rawBody.trim();
 
-  let expectedSignatureHeader = 'sha256=' + crypto.createHmac('sha256', Buffer.from(env.WEBHOOK_SECRET, 'utf8')).update(message).digest('hex');
+  let expectedSignatureHeader =
+    'sha256=' + crypto.createHmac('sha256', Buffer.from(env.WEBHOOK_SECRET, 'utf8')).update(message).digest('hex');
   return expectedSignatureHeader === messageSignature;
 }
 
 export function getDataRowFromMessage(message: any): DataRow | undefined {
-  console.trace('Received message', message);
+  console.log('Received message', message);
   switch (message.subscription.type) {
     case 'channel.chat.notification':
       switch (message.event.notice_type) {
         case 'sub':
-          return { action: 'Sub', level: message.event.sub.sub_tier, amount: 1, user: message.event.chatter_user_name };
+          return {
+            action: 'Sub',
+            level: message.event.sub.sub_plan,
+            amount: 1,
+            user: message.event.chatter_user_name,
+            message: message.event.message.text,
+          };
         case 'resub':
           if (!message.event.resub.is_gift)
-            return { action: 'Resub', level: message.event.resub.sub_tier, amount: 1, user: message.event.chatter_user_name };
+            return {
+              action: 'Resub',
+              level: message.event.resub.sub_tier,
+              amount: 1,
+              user: message.event.chatter_user_name,
+              message: message.event.message.text,
+            };
         case 'sub_gift':
           if (!message.event.sub_gift.community_gift_id)
-            return { action: 'Gift', level: message.event.sub_gift.sub_tier, amount: 1, user: message.event.chatter_user_name };
+            return {
+              action: 'Gift',
+              level: message.event.sub_gift.sub_tier,
+              amount: 1,
+              user: message.event.chatter_user_name,
+              message: message.event.message.text,
+            };
         case 'community_sub_gift':
           return {
             action: 'Gift',
             level: message.event.community_sub_gift.sub_tier,
             amount: message.event.community_sub_gift.total,
             user: message.event.chatter_user_name,
+            message: message.event.message.text,
           };
       }
     case 'channel.bits.use':
@@ -85,6 +105,7 @@ export function getDataRowFromMessage(message: any): DataRow | undefined {
         action: 'Cheer',
         user: message.event.user_name,
         amount: message.event.bits,
+        message: message.event.message.text,
       };
     case 'channel.hype_train.end':
       return {
